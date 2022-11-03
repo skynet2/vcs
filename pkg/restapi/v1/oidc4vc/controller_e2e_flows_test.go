@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
@@ -38,7 +39,8 @@ import (
 )
 
 const (
-	clientID = "test-client"
+	clientID        = "test-client"
+	preAuthClientId = "pre-auth-client"
 )
 
 var fositeStore = &storage.MemoryStore{ //nolint:gochecknoglobals
@@ -47,6 +49,14 @@ var fositeStore = &storage.MemoryStore{ //nolint:gochecknoglobals
 			ID:            clientID,
 			Secret:        []byte(`$2a$10$IxMdI6d.LIRZPpSfEwNoeu4rY3FhDREsxFJXikcgdRRAStxUlsuEO`), // = "foobar"
 			RedirectURIs:  []string{"/client/cb"},
+			ResponseTypes: []string{"code"},
+			GrantTypes:    []string{"authorization_code"},
+			Scopes:        []string{"openid", "profile"},
+		},
+		preAuthClientId: &fosite.DefaultClient{
+			ID:            preAuthClientId,
+			Secret:        []byte(`$2a$10$IxMdI6d.LIRZPpSfEwNoeu4rY3FhDREsxFJXikcgdRRAStxUlsuEO`), // = "foobar"
+			RedirectURIs:  []string{"/oidc/token"},
 			ResponseTypes: []string{"code"},
 			GrantTypes:    []string{"authorization_code"},
 			Scopes:        []string{"openid", "profile"},
@@ -135,6 +145,97 @@ func TestAuthorizeCodeGrantFlow(t *testing.T) {
 	authCodeURL := oauthClient.AuthCodeURL(opState, params...)
 
 	resp, err := http.DefaultClient.Get(authCodeURL)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	code := resp.Request.URL.Query().Get("code")
+	require.NotEmpty(t, code)
+
+	token, err := oauthClient.Exchange(context.TODO(), code,
+		oauth2.SetAuthURLParam("code_verifier", "xalsLDydJtHwIQZukUyj6boam5vMUaJRWv-BnGCAzcZi3ZTs"),
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, token)
+	require.NotEmpty(t, token.AccessToken)
+}
+
+func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = resterr.HTTPErrorHandler
+
+	opState := "QIn85XAEHwlPyCVRhTww"
+
+	srv := httptest.NewServer(e)
+	defer srv.Close()
+
+	// prepend client redirect URIs with test server URL
+	for _, client := range fositeStore.Clients {
+		c, ok := client.(*fosite.DefaultClient)
+		if ok {
+			c.RedirectURIs[0] = srv.URL + c.RedirectURIs[0]
+		}
+	}
+
+	config := new(fosite.Config)
+
+	var hmacStrategy = &fositeoauth.HMACSHAStrategy{
+		Enigma: &hmac.HMACStrategy{
+			Config: &fosite.Config{
+				GlobalSecret: []byte("secret-for-signing-and-verifying-signatures"),
+			},
+		},
+		Config: &fosite.Config{
+			AuthorizeCodeLifespan: time.Minute,
+			AccessTokenLifespan:   time.Hour,
+		},
+	}
+
+	oauth2Provider := compose.Compose(config, fositeStore, hmacStrategy,
+		compose.OAuth2AuthorizeExplicitFactory,
+		compose.OAuth2PKCEFactory,
+		compose.PushedAuthorizeHandlerFactory,
+	)
+
+	controller := oidc4vc.NewController(&oidc4vc.Config{
+		OAuth2Provider:          oauth2Provider,
+		StateStore:              &memoryStateStore{kv: make(map[string]*oidc4vcstatestore.AuthorizeState)},
+		IssuerInteractionClient: mockIssuerInteractionClient(t, srv.URL, opState),
+		IssuerVCSPublicHost:     srv.URL,
+	})
+
+	oidc4vc.RegisterHandlers(e, controller)
+
+	preAuthCode := uuid.NewString()
+	resp, err := http.DefaultClient.PostForm(
+		fmt.Sprintf("%s/oidc/token", srv.URL),
+		url.Values{
+			"grant_type":          {"urn:ietf:params:oauth:grant-type:pre-authorized_code"},
+			"pre-authorized_code": {preAuthCode},
+			"user_pin":            {"2123"},
+		})
+
+	fmt.Println(resp, err)
+	oauthClient := &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: "foobar",
+		RedirectURL:  srv.URL + "/client/cb",
+		Scopes:       []string{"openid", "profile"},
+		Endpoint: oauth2.Endpoint{
+			TokenURL:  srv.URL + "/oidc/token",
+			AuthURL:   srv.URL + "/oidc/authorize",
+			AuthStyle: oauth2.AuthStyleInHeader,
+		},
+	}
+
+	params := []oauth2.AuthCodeOption{
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+		oauth2.SetAuthURLParam("code_challenge", "MLSjJIlPzeRQoN9YiIsSzziqEuBSmS4kDgI3NDjbfF8"),
+		oauth2.SetAuthURLParam("op_state", opState),
+	}
+
+	authCodeURL := oauthClient.AuthCodeURL(opState, params...)
+
+	resp, err = http.DefaultClient.Get(authCodeURL)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	code := resp.Request.URL.Query().Get("code")

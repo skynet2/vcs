@@ -10,6 +10,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/trustbloc/vcs/internal/pkg/log"
 	profileapi "github.com/trustbloc/vcs/pkg/profile"
@@ -55,6 +58,8 @@ func (s *Service) InitiateIssuance(
 		ResponseType:                       req.ResponseType,
 		Scope:                              req.Scope,
 		OpState:                            req.OpState,
+		ClaimData:                          req.ClaimData,
+		UserPinRequired:                    req.UserPinRequired,
 	}
 
 	if data.GrantType == "" {
@@ -67,6 +72,14 @@ func (s *Service) InitiateIssuance(
 
 	if len(data.Scope) == 0 {
 		data.Scope = []string{defaultScope}
+	}
+
+	if len(data.ClaimData) > 0 {
+		data.IsPreAuthFlow = true
+		data.OpState = uuid.NewString() + fmt.Sprint(time.Now().UnixNano()) // generate new opState as it will be empty for pre-auth
+		data.PreAuthCode = data.OpState                                     // we can use same value here
+
+		req.OpState = data.OpState // required for building url
 	}
 
 	tx, err := s.store.Create(ctx, data)

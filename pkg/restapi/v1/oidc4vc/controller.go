@@ -13,7 +13,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/labstack/echo/v4"
 	"github.com/ory/fosite"
@@ -23,14 +25,17 @@ import (
 	"github.com/trustbloc/vcs/pkg/restapi/resterr"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/common"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/issuer"
+	"github.com/trustbloc/vcs/pkg/restapi/v1/util"
 	apiutil "github.com/trustbloc/vcs/pkg/restapi/v1/util"
 	"github.com/trustbloc/vcs/pkg/service/oidc4vc"
 	"github.com/trustbloc/vcs/pkg/storage/mongodb/oidc4vcstatestore"
 )
 
 const (
-	nonceLength       = 15
-	sessionOpStateKey = "opState"
+	nonceLength           = 15
+	sessionOpStateKey     = "opState"
+	preAuthKey            = "pre-auth"
+	preAuthorizeGrantType = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
 )
 
 // StateStore stores authorization request/response state.
@@ -148,6 +153,29 @@ func (c *Controller) OidcAuthorize(e echo.Context, params OidcAuthorizeParams) e
 		return resterr.NewFositeError(resterr.FositeAuthorizeError, e, c.oauth2Provider, err).WithAuthorizeRequester(ar)
 	}
 
+	ses := &fosite.DefaultSession{
+		Extra: map[string]interface{}{
+			sessionOpStateKey: params.OpState,
+		},
+	}
+
+	isPreAuthFlow := params.AuthorizationDetails != nil && *params.AuthorizationDetails == preAuthorizeGrantType
+
+	if isPreAuthFlow {
+		ses.Extra[preAuthKey] = "true"
+	}
+
+	resp, err := c.oauth2Provider.NewAuthorizeResponse(ctx, ar, ses)
+	if err != nil {
+		return resterr.NewFositeError(resterr.FositeAuthorizeError, e, c.oauth2Provider, err).WithAuthorizeRequester(ar)
+	}
+
+	if isPreAuthFlow {
+		// for pre-auth flow we don`t need additional interaction with issuer, as we already have all info
+		c.oauth2Provider.WriteAuthorizeResponse(ctx, e.Response().Writer, ar, resp)
+		return nil
+	}
+
 	var scope []string
 
 	for _, s := range ar.GetRequestedScopes() {
@@ -192,16 +220,6 @@ func (c *Controller) OidcAuthorize(e echo.Context, params OidcAuthorizeParams) e
 	}
 
 	ar.(*fosite.AuthorizeRequest).State = params.OpState
-	ses := &fosite.DefaultSession{
-		Extra: map[string]interface{}{
-			sessionOpStateKey: params.OpState,
-		},
-	}
-
-	resp, err := c.oauth2Provider.NewAuthorizeResponse(ctx, ar, ses)
-	if err != nil {
-		return resterr.NewFositeError(resterr.FositeAuthorizeError, e, c.oauth2Provider, err).WithAuthorizeRequester(ar)
-	}
 
 	if err = c.stateStore.SaveAuthorizeState(
 		ctx,
@@ -257,9 +275,83 @@ func (c *Controller) OidcToken(e echo.Context) error {
 	req := e.Request()
 	ctx := req.Context()
 
+	if err := req.ParseForm(); err != nil {
+		return err
+	}
+
+	if req.FormValue("grant_type") == preAuthorizeGrantType {
+		preAuthorizedCode := req.FormValue("pre-authorized_code")
+
+		//txState, err := c.issuerInteractionClient.RequestTransactionStateRequest(ctx, preAuthorizedCode)
+		//if err != nil {
+		//	return err
+		//}
+		//
+		//var parsed issuer.TransactionStateResponse
+		//if err = json.NewDecoder(txState.Body).Decode(&parsed); err != nil {
+		//	return err
+		//}
+
+		cl := oauth2.Config{
+			ClientID:     "pre-auth-client",
+			ClientSecret: "foobar",
+			RedirectURL:  c.issuerVCSPublicHost + "/oidc/token",
+			//Scopes:       parsed.Scopes,
+			Scopes: []string{"openid", "profile"},
+			Endpoint: oauth2.Endpoint{
+				AuthURL:   c.issuerVCSPublicHost + "/oidc/authorize",
+				TokenURL:  c.issuerVCSPublicHost + "/oidc/token",
+				AuthStyle: oauth2.AuthStyleInParams,
+			},
+		}
+
+		authUrl := cl.AuthCodeURL(preAuthorizedCode,
+			oauth2.SetAuthURLParam("authorization_details", preAuthorizeGrantType),
+			oauth2.SetAuthURLParam("state", preAuthorizedCode),
+			oauth2.SetAuthURLParam("op_state", preAuthorizedCode),
+			oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+			oauth2.SetAuthURLParam("code_challenge", "MLSjJIlPzeRQoN9YiIsSzziqEuBSmS4kDgI3NDjbfF8"),
+		)
+
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		httpResp, httpErr := client.Get(authUrl)
+		if httpResp.StatusCode != http.StatusSeeOther {
+			return fmt.Errorf("unexpected status code [%v]", httpResp.StatusCode)
+		}
+
+		u, err := url.Parse(httpResp.Header.Get("location"))
+		if err != nil {
+			return err
+		}
+
+		token, err := cl.Exchange(ctx, u.Query().Get("code"),
+			oauth2.SetAuthURLParam("code_verifier", "xalsLDydJtHwIQZukUyj6boam5vMUaJRWv-BnGCAzcZi3ZTs"),
+		)
+		if err != nil {
+			return nil
+		}
+
+		b, err := io.ReadAll(httpResp.Body)
+		str := string(b)
+		fmt.Println(token, httpResp, httpErr, str, err)
+	}
+
 	ar, err := c.oauth2Provider.NewAccessRequest(ctx, req, new(fosite.DefaultSession))
 	if err != nil {
 		return resterr.NewFositeError(resterr.FositeAccessError, e, c.oauth2Provider, err).WithAccessRequester(ar)
+	}
+
+	resp, err := c.oauth2Provider.NewAccessResponse(ctx, ar)
+	preAuthValue := ar.GetSession().(*fosite.DefaultSession).Extra[preAuthKey]
+
+	if preAuthValue != nil && preAuthValue.(string) == "true" {
+		c.oauth2Provider.WriteAccessResponse(ctx, e.Response().Writer, ar, resp)
+		return nil
 	}
 
 	exchangeResp, err := c.issuerInteractionClient.ExchangeAuthorizationCodeRequest(
@@ -273,7 +365,6 @@ func (c *Controller) OidcToken(e echo.Context) error {
 	}
 	_ = exchangeResp.Body.Close()
 
-	resp, err := c.oauth2Provider.NewAccessResponse(ctx, ar)
 	if err != nil {
 		return resterr.NewFositeError(resterr.FositeAccessError, e, c.oauth2Provider, err).WithAccessRequester(ar)
 	}
@@ -282,3 +373,40 @@ func (c *Controller) OidcToken(e echo.Context) error {
 
 	return nil
 }
+
+func (c *Controller) PostOidcPreAuthorize(ctx echo.Context) error {
+	var body PreAuthorizeRequest
+
+	if err := util.ReadBody(ctx, &body); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//type tx struct {
+//	IsPreAuthFlow   bool
+//	UserPinRequired bool
+//	Pin             string
+//	Scopes          []string
+//	OpState         string
+//}
+//
+//func (c *Controller) OidcTx(e echo.Context) error {
+//	t := tx{}
+//
+//	cfg := oauth2.Config{
+//		ClientID:     "temporary_client",
+//		ClientSecret: "foobar",
+//		Endpoint: oauth2.Endpoint{
+//			AuthURL:   c.issuerVCSPublicHost + authEndpoint,
+//			AuthStyle: oauth2.AuthStyleInParams,
+//		},
+//		RedirectURL: c.issuerVCSPublicHost + "/oidc/redirect",
+//		Scopes:      t.Scopes,
+//	}
+//
+//	cfg.AuthCodeURL()
+//
+//	return e.Redirect(http.StatusSeeOther, cfg.AuthCodeURL(t.OpState))
+//}

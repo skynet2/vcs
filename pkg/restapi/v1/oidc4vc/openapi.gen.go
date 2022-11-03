@@ -35,6 +35,12 @@ type AccessTokenResponse struct {
 	TokenType string `json:"token_type"`
 }
 
+// Model exchanging pre-authorized code and pin to token.
+type PreAuthorizeRequest struct {
+	Pin         *string `json:"pin,omitempty"`
+	PreAuthCode string  `json:"pre_auth_code"`
+}
+
 // Model for Pushed Authorization Response.
 type PushedAuthorizationResponse struct {
 	// A JSON number that represents the lifetime of the request URI in seconds as a positive integer. The request URI lifetime is at the discretion of the authorization server but will typically be relatively short (e.g., between 5 and 600 seconds).
@@ -80,6 +86,9 @@ type OidcAuthorizeParams struct {
 	OpState string `form:"op_state" json:"op_state"`
 }
 
+// PostOidcPreAuthorizeJSONBody defines parameters for PostOidcPreAuthorize.
+type PostOidcPreAuthorizeJSONBody = PreAuthorizeRequest
+
 // OidcRedirectParams defines parameters for OidcRedirect.
 type OidcRedirectParams struct {
 	// auth code for issuer provider
@@ -89,6 +98,9 @@ type OidcRedirectParams struct {
 	State string `form:"state" json:"state"`
 }
 
+// PostOidcPreAuthorizeJSONRequestBody defines body for PostOidcPreAuthorize for application/json ContentType.
+type PostOidcPreAuthorizeJSONRequestBody = PostOidcPreAuthorizeJSONBody
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// OIDC Authorization Request
@@ -97,6 +109,9 @@ type ServerInterface interface {
 	// OIDC Pushed Authorization Request
 	// (POST /oidc/par)
 	OidcPushedAuthorizationRequest(ctx echo.Context) error
+	// Request token for Pre-Authorized flow.
+	// (POST /oidc/pre-authorize)
+	PostOidcPreAuthorize(ctx echo.Context) error
 	// OIDC Redirect
 	// (GET /oidc/redirect)
 	OidcRedirect(ctx echo.Context, params OidcRedirectParams) error
@@ -207,6 +222,15 @@ func (w *ServerInterfaceWrapper) OidcPushedAuthorizationRequest(ctx echo.Context
 	return err
 }
 
+// PostOidcPreAuthorize converts echo context to params.
+func (w *ServerInterfaceWrapper) PostOidcPreAuthorize(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.PostOidcPreAuthorize(ctx)
+	return err
+}
+
 // OidcRedirect converts echo context to params.
 func (w *ServerInterfaceWrapper) OidcRedirect(ctx echo.Context) error {
 	var err error
@@ -271,6 +295,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.GET(baseURL+"/oidc/authorize", wrapper.OidcAuthorize)
 	router.POST(baseURL+"/oidc/par", wrapper.OidcPushedAuthorizationRequest)
+	router.POST(baseURL+"/oidc/pre-authorize", wrapper.PostOidcPreAuthorize)
 	router.GET(baseURL+"/oidc/redirect", wrapper.OidcRedirect)
 	router.POST(baseURL+"/oidc/token", wrapper.OidcToken)
 

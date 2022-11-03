@@ -189,6 +189,24 @@ paths:
               $ref: '#/components/schemas/InitiateOIDC4VCRequest'
       tags:
         - issuer
+  /issuer/interactions/pre-authorize:
+    post:
+      summary: Validate pre-authorize code and pin.
+      tags:
+        - issuer
+      description: Used for Pre-Authorized flow to validate pre-authorized code and pin from user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreAuthorizeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionStateResponse"
   /issuer/interactions/push-authorization-request:
     post:
       summary: Push Authorization Details
@@ -259,6 +277,27 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExchangeAuthorizationCodeRequest'
+      tags:
+        - issuer
+  /issuer/interactions/{txId}:
+    get:
+      summary: Request Transaction State
+      parameters:
+        - schema:
+            type: string
+          name: txId
+          in: path
+          required: true
+          description: Transaction ID.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStateResponse'
+      operationId: request-transaction-state-request
+      description: Requests oidc transaction state.
       tags:
         - issuer
   '/verifier/profiles/{profileID}/credentials/verify':
@@ -447,13 +486,31 @@ paths:
                 - client_id
                 - code_challenge
         description: ''
+  /oidc/pre-authorize:
+    post:
+      summary: Request token for Pre-Authorized flow.
+      tags:
+        - oidc4vc
+      description: Used for Pre-Authorized flow to request access token with pre-auth code and optional pin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreAuthorizeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
   /oidc/authorize:
     get:
       summary: OIDC Authorization Request
       responses:
         '302':
           description: Found
-          headers: {}
+          headers: { }
           content:
             application/x-www-form-urlencoded:
               schema:
@@ -531,7 +588,7 @@ paths:
           required: true
       tags:
         - oidc4vc
-    parameters: []
+    parameters: [ ]
   /oidc/token:
     post:
       summary: OIDC Token Request
@@ -777,6 +834,19 @@ components:
           description: Credential in jws(string) or jsonld(object) formats.
       required:
         - credential
+    PreAuthorizeRequest:
+      title: PreAuthorizeRequest
+      x-tags:
+        - issuer
+      type: object
+      description: Model exchanging pre-authorized code and pin to token.
+      properties:
+        pre_auth_code:
+          type: string
+        pin:
+          type: string
+      required:
+        - pre_auth_code
     UpdateCredentialStatusRequest:
       title: UpdateCredentialStatusRequest
       x-tags:
@@ -897,6 +967,28 @@ components:
       properties:
         tx_id:
           type: string
+    TransactionStateResponse:
+      title: ExchangeAuthorizationCodeResponse
+      type: object
+      description: Response model for exchanging auth code from issuer oauth
+      x-tags:
+        - issuer
+      properties:
+        is_pre_auth:
+          type: boolean
+        user_pin_required:
+          type: boolean
+        scopes:
+          type: array
+          items:
+            type: string
+        op_state:
+          type: string
+      required:
+        - is_pre_auth
+        - user_pin_required
+        - scopes
+        - op_state
     StoreAuthorizationCodeRequest:
       title: StoreAuthorizationCodeRequest
       type: object
@@ -998,6 +1090,12 @@ components:
         authorization_details:
           type: string
           description: Customizes what kind of access Issuer wants to give to VCS.
+        user_pin_required:
+          type: boolean
+          description: Required for Pre-Authorized Code Flow. Boolean value specifying whether the issuer expects presentation of a user PIN along with the Token Request in a pre-authorized code flow.
+        claim_data:
+          type: object
+          description: Required for Pre-Authorized Code Flow. VCS OIDC Service acts as OP for wallet applications
       x-tags:
         - issuer
     InitiateOIDC4VCResponse:
@@ -1077,4 +1175,4 @@ components:
       required:
         - op_state
         - authorization_details
-  securitySchemes: {}
+  securitySchemes: { }

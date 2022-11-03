@@ -45,6 +45,9 @@ type InitiateOIDC4VCRequest struct {
 	// Customizes what kind of access Issuer wants to give to VCS.
 	AuthorizationDetails *string `json:"authorization_details,omitempty"`
 
+	// Required for Pre-Authorized Code Flow. VCS OIDC Service acts as OP for wallet applications
+	ClaimData *map[string]interface{} `json:"claim_data,omitempty"`
+
 	// Claim endpoint of the Issuer from where credential claim data has to be requested after successfully acquiring access tokens.
 	ClaimEndpoint *string `json:"claim_endpoint,omitempty"`
 
@@ -68,6 +71,9 @@ type InitiateOIDC4VCRequest struct {
 
 	// Contains scopes that issuer expects VCS to use while requesting authorization code for claim data. Defaults to openid.
 	Scope *[]string `json:"scope,omitempty"`
+
+	// Required for Pre-Authorized Code Flow. Boolean value specifying whether the issuer expects presentation of a user PIN along with the Token Request in a pre-authorized code flow.
+	UserPinRequired *bool `json:"user_pin_required,omitempty"`
 }
 
 // Model for Initiate OIDC Credential Issuance Response.
@@ -114,6 +120,12 @@ type OAuthParameters struct {
 	Scope        []string `json:"scope"`
 }
 
+// Model exchanging pre-authorized code and pin to token.
+type PreAuthorizeRequest struct {
+	Pin         *string `json:"pin,omitempty"`
+	PreAuthCode string  `json:"pre_auth_code"`
+}
+
 // Model for Prepare Claim Data Authorization Request.
 type PrepareClaimDataAuthorizationRequest struct {
 	// Model to convey the details about the Credentials the Client wants to obtain.
@@ -158,6 +170,14 @@ type StoreAuthorizationCodeResponse struct {
 	TxId *string `json:"tx_id,omitempty"`
 }
 
+// Response model for exchanging auth code from issuer oauth
+type TransactionStateResponse struct {
+	IsPreAuth       bool     `json:"is_pre_auth"`
+	OpState         string   `json:"op_state"`
+	Scopes          []string `json:"scopes"`
+	UserPinRequired bool     `json:"user_pin_required"`
+}
+
 // UpdateCredentialStatusRequest request struct for updating VC status.
 type UpdateCredentialStatusRequest struct {
 	CredentialID string `json:"credentialID"`
@@ -168,6 +188,9 @@ type UpdateCredentialStatusRequest struct {
 
 // ExchangeAuthorizationCodeRequestJSONBody defines parameters for ExchangeAuthorizationCodeRequest.
 type ExchangeAuthorizationCodeRequestJSONBody = ExchangeAuthorizationCodeRequest
+
+// PostIssuerInteractionsPreAuthorizeJSONBody defines parameters for PostIssuerInteractionsPreAuthorize.
+type PostIssuerInteractionsPreAuthorizeJSONBody = PreAuthorizeRequest
 
 // PrepareAuthorizationRequestJSONBody defines parameters for PrepareAuthorizationRequest.
 type PrepareAuthorizationRequestJSONBody = PrepareClaimDataAuthorizationRequest
@@ -189,6 +212,9 @@ type InitiateCredentialIssuanceJSONBody = InitiateOIDC4VCRequest
 
 // ExchangeAuthorizationCodeRequestJSONRequestBody defines body for ExchangeAuthorizationCodeRequest for application/json ContentType.
 type ExchangeAuthorizationCodeRequestJSONRequestBody = ExchangeAuthorizationCodeRequestJSONBody
+
+// PostIssuerInteractionsPreAuthorizeJSONRequestBody defines body for PostIssuerInteractionsPreAuthorize for application/json ContentType.
+type PostIssuerInteractionsPreAuthorizeJSONRequestBody = PostIssuerInteractionsPreAuthorizeJSONBody
 
 // PrepareAuthorizationRequestJSONRequestBody defines body for PrepareAuthorizationRequest for application/json ContentType.
 type PrepareAuthorizationRequestJSONRequestBody = PrepareAuthorizationRequestJSONBody
@@ -286,6 +312,11 @@ type ClientInterface interface {
 
 	ExchangeAuthorizationCodeRequest(ctx context.Context, body ExchangeAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostIssuerInteractionsPreAuthorize request with any body
+	PostIssuerInteractionsPreAuthorizeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostIssuerInteractionsPreAuthorize(ctx context.Context, body PostIssuerInteractionsPreAuthorizeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PrepareAuthorizationRequest request with any body
 	PrepareAuthorizationRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -300,6 +331,9 @@ type ClientInterface interface {
 	StoreAuthorizationCodeRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	StoreAuthorizationCodeRequest(ctx context.Context, body StoreAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestTransactionStateRequest request
+	RequestTransactionStateRequest(ctx context.Context, txId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostIssueCredentials request with any body
 	PostIssueCredentialsWithBody(ctx context.Context, profileID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -334,6 +368,30 @@ func (c *Client) ExchangeAuthorizationCodeRequestWithBody(ctx context.Context, c
 
 func (c *Client) ExchangeAuthorizationCodeRequest(ctx context.Context, body ExchangeAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExchangeAuthorizationCodeRequestRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostIssuerInteractionsPreAuthorizeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostIssuerInteractionsPreAuthorizeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostIssuerInteractionsPreAuthorize(ctx context.Context, body PostIssuerInteractionsPreAuthorizeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostIssuerInteractionsPreAuthorizeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -406,6 +464,18 @@ func (c *Client) StoreAuthorizationCodeRequestWithBody(ctx context.Context, cont
 
 func (c *Client) StoreAuthorizationCodeRequest(ctx context.Context, body StoreAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStoreAuthorizationCodeRequestRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestTransactionStateRequest(ctx context.Context, txId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestTransactionStateRequestRequest(c.Server, txId)
 	if err != nil {
 		return nil, err
 	}
@@ -521,6 +591,46 @@ func NewExchangeAuthorizationCodeRequestRequestWithBody(server string, contentTy
 	}
 
 	operationPath := fmt.Sprintf("/issuer/interactions/exchange-authorization-code")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostIssuerInteractionsPreAuthorizeRequest calls the generic PostIssuerInteractionsPreAuthorize builder with application/json body
+func NewPostIssuerInteractionsPreAuthorizeRequest(server string, body PostIssuerInteractionsPreAuthorizeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostIssuerInteractionsPreAuthorizeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostIssuerInteractionsPreAuthorizeRequestWithBody generates requests for PostIssuerInteractionsPreAuthorize with any type of body
+func NewPostIssuerInteractionsPreAuthorizeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/issuer/interactions/pre-authorize")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -656,6 +766,40 @@ func NewStoreAuthorizationCodeRequestRequestWithBody(server string, contentType 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRequestTransactionStateRequestRequest generates requests for RequestTransactionStateRequest
+func NewRequestTransactionStateRequestRequest(server string, txId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "txId", runtime.ParamLocationPath, txId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/issuer/interactions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -890,6 +1034,11 @@ type ClientWithResponsesInterface interface {
 
 	ExchangeAuthorizationCodeRequestWithResponse(ctx context.Context, body ExchangeAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeAuthorizationCodeRequestResponse, error)
 
+	// PostIssuerInteractionsPreAuthorize request with any body
+	PostIssuerInteractionsPreAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostIssuerInteractionsPreAuthorizeResponse, error)
+
+	PostIssuerInteractionsPreAuthorizeWithResponse(ctx context.Context, body PostIssuerInteractionsPreAuthorizeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostIssuerInteractionsPreAuthorizeResponse, error)
+
 	// PrepareAuthorizationRequest request with any body
 	PrepareAuthorizationRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAuthorizationRequestResponse, error)
 
@@ -904,6 +1053,9 @@ type ClientWithResponsesInterface interface {
 	StoreAuthorizationCodeRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StoreAuthorizationCodeRequestResponse, error)
 
 	StoreAuthorizationCodeRequestWithResponse(ctx context.Context, body StoreAuthorizationCodeRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*StoreAuthorizationCodeRequestResponse, error)
+
+	// RequestTransactionStateRequest request
+	RequestTransactionStateRequestWithResponse(ctx context.Context, txId string, reqEditors ...RequestEditorFn) (*RequestTransactionStateRequestResponse, error)
 
 	// PostIssueCredentials request with any body
 	PostIssueCredentialsWithBodyWithResponse(ctx context.Context, profileID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostIssueCredentialsResponse, error)
@@ -940,6 +1092,28 @@ func (r ExchangeAuthorizationCodeRequestResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ExchangeAuthorizationCodeRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostIssuerInteractionsPreAuthorizeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TransactionStateResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PostIssuerInteractionsPreAuthorizeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostIssuerInteractionsPreAuthorizeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1005,6 +1179,28 @@ func (r StoreAuthorizationCodeRequestResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r StoreAuthorizationCodeRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestTransactionStateRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TransactionStateResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestTransactionStateRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestTransactionStateRequestResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1116,6 +1312,23 @@ func (c *ClientWithResponses) ExchangeAuthorizationCodeRequestWithResponse(ctx c
 	return ParseExchangeAuthorizationCodeRequestResponse(rsp)
 }
 
+// PostIssuerInteractionsPreAuthorizeWithBodyWithResponse request with arbitrary body returning *PostIssuerInteractionsPreAuthorizeResponse
+func (c *ClientWithResponses) PostIssuerInteractionsPreAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostIssuerInteractionsPreAuthorizeResponse, error) {
+	rsp, err := c.PostIssuerInteractionsPreAuthorizeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostIssuerInteractionsPreAuthorizeResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostIssuerInteractionsPreAuthorizeWithResponse(ctx context.Context, body PostIssuerInteractionsPreAuthorizeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostIssuerInteractionsPreAuthorizeResponse, error) {
+	rsp, err := c.PostIssuerInteractionsPreAuthorize(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostIssuerInteractionsPreAuthorizeResponse(rsp)
+}
+
 // PrepareAuthorizationRequestWithBodyWithResponse request with arbitrary body returning *PrepareAuthorizationRequestResponse
 func (c *ClientWithResponses) PrepareAuthorizationRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAuthorizationRequestResponse, error) {
 	rsp, err := c.PrepareAuthorizationRequestWithBody(ctx, contentType, body, reqEditors...)
@@ -1165,6 +1378,15 @@ func (c *ClientWithResponses) StoreAuthorizationCodeRequestWithResponse(ctx cont
 		return nil, err
 	}
 	return ParseStoreAuthorizationCodeRequestResponse(rsp)
+}
+
+// RequestTransactionStateRequestWithResponse request returning *RequestTransactionStateRequestResponse
+func (c *ClientWithResponses) RequestTransactionStateRequestWithResponse(ctx context.Context, txId string, reqEditors ...RequestEditorFn) (*RequestTransactionStateRequestResponse, error) {
+	rsp, err := c.RequestTransactionStateRequest(ctx, txId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestTransactionStateRequestResponse(rsp)
 }
 
 // PostIssueCredentialsWithBodyWithResponse request with arbitrary body returning *PostIssueCredentialsResponse
@@ -1253,6 +1475,32 @@ func ParseExchangeAuthorizationCodeRequestResponse(rsp *http.Response) (*Exchang
 	return response, nil
 }
 
+// ParsePostIssuerInteractionsPreAuthorizeResponse parses an HTTP response from a PostIssuerInteractionsPreAuthorizeWithResponse call
+func ParsePostIssuerInteractionsPreAuthorizeResponse(rsp *http.Response) (*PostIssuerInteractionsPreAuthorizeResponse, error) {
+	bodyBytes, err := ioutil.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostIssuerInteractionsPreAuthorizeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TransactionStateResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePrepareAuthorizationRequestResponse parses an HTTP response from a PrepareAuthorizationRequestWithResponse call
 func ParsePrepareAuthorizationRequestResponse(rsp *http.Response) (*PrepareAuthorizationRequestResponse, error) {
 	bodyBytes, err := ioutil.ReadAll(rsp.Body)
@@ -1311,6 +1559,32 @@ func ParseStoreAuthorizationCodeRequestResponse(rsp *http.Response) (*StoreAutho
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest StoreAuthorizationCodeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestTransactionStateRequestResponse parses an HTTP response from a RequestTransactionStateRequestWithResponse call
+func ParseRequestTransactionStateRequestResponse(rsp *http.Response) (*RequestTransactionStateRequestResponse, error) {
+	bodyBytes, err := ioutil.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestTransactionStateRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TransactionStateResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1430,6 +1704,9 @@ type ServerInterface interface {
 	// Exchange authorization code from issuer oauth provider
 	// (POST /issuer/interactions/exchange-authorization-code)
 	ExchangeAuthorizationCodeRequest(ctx echo.Context) error
+	// Validate pre-authorize code and pin.
+	// (POST /issuer/interactions/pre-authorize)
+	PostIssuerInteractionsPreAuthorize(ctx echo.Context) error
 	// Prepare Claim Data Authorization Request
 	// (POST /issuer/interactions/prepare-claim-data-authz-request)
 	PrepareAuthorizationRequest(ctx echo.Context) error
@@ -1439,6 +1716,9 @@ type ServerInterface interface {
 	// Stores authorization code from issuer oauth provider
 	// (POST /issuer/interactions/store-authorization-code)
 	StoreAuthorizationCodeRequest(ctx echo.Context) error
+	// Request Transaction State
+	// (GET /issuer/interactions/{txId})
+	RequestTransactionStateRequest(ctx echo.Context, txId string) error
 	// Issue credential
 	// (POST /issuer/profiles/{profileID}/credentials/issue)
 	PostIssueCredentials(ctx echo.Context, profileID string) error
@@ -1467,6 +1747,15 @@ func (w *ServerInterfaceWrapper) ExchangeAuthorizationCodeRequest(ctx echo.Conte
 	return err
 }
 
+// PostIssuerInteractionsPreAuthorize converts echo context to params.
+func (w *ServerInterfaceWrapper) PostIssuerInteractionsPreAuthorize(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.PostIssuerInteractionsPreAuthorize(ctx)
+	return err
+}
+
 // PrepareAuthorizationRequest converts echo context to params.
 func (w *ServerInterfaceWrapper) PrepareAuthorizationRequest(ctx echo.Context) error {
 	var err error
@@ -1491,6 +1780,22 @@ func (w *ServerInterfaceWrapper) StoreAuthorizationCodeRequest(ctx echo.Context)
 
 	// Invoke the callback with all the unmarshalled arguments
 	err = w.Handler.StoreAuthorizationCodeRequest(ctx)
+	return err
+}
+
+// RequestTransactionStateRequest converts echo context to params.
+func (w *ServerInterfaceWrapper) RequestTransactionStateRequest(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "txId" -------------
+	var txId string
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "txId", runtime.ParamLocationPath, ctx.Param("txId"), &txId)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter txId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.RequestTransactionStateRequest(ctx, txId)
 	return err
 }
 
@@ -1595,9 +1900,11 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	}
 
 	router.POST(baseURL+"/issuer/interactions/exchange-authorization-code", wrapper.ExchangeAuthorizationCodeRequest)
+	router.POST(baseURL+"/issuer/interactions/pre-authorize", wrapper.PostIssuerInteractionsPreAuthorize)
 	router.POST(baseURL+"/issuer/interactions/prepare-claim-data-authz-request", wrapper.PrepareAuthorizationRequest)
 	router.POST(baseURL+"/issuer/interactions/push-authorization-request", wrapper.PushAuthorizationDetails)
 	router.POST(baseURL+"/issuer/interactions/store-authorization-code", wrapper.StoreAuthorizationCodeRequest)
+	router.GET(baseURL+"/issuer/interactions/:txId", wrapper.RequestTransactionStateRequest)
 	router.POST(baseURL+"/issuer/profiles/:profileID/credentials/issue", wrapper.PostIssueCredentials)
 	router.POST(baseURL+"/issuer/profiles/:profileID/credentials/status", wrapper.PostCredentialsStatus)
 	router.GET(baseURL+"/issuer/profiles/:profileID/credentials/status/:statusID", wrapper.GetCredentialsStatus)

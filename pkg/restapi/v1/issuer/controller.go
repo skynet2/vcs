@@ -89,6 +89,12 @@ type oidc4vcService interface {
 		ctx context.Context,
 		opState string,
 	) (oidc4vc.TxID, error)
+
+	ValidatePreAuthorizeCode(
+		ctx context.Context,
+		preAuthorizeCode string,
+		pin string,
+	) (*oidc4vc.Transaction, error)
 }
 
 type vcStatusManager interface {
@@ -320,6 +326,8 @@ func (c *Controller) initiateIssuance(
 		ResponseType:              lo.FromPtr(req.ResponseType),
 		Scope:                     lo.FromPtr(req.Scope),
 		OpState:                   lo.FromPtr(req.OpState),
+		ClaimData:                 lo.FromPtr(req.ClaimData),
+		UserPinRequired:           lo.FromPtr(req.UserPinRequired),
 	}
 
 	resp, err := c.oidc4vcService.InitiateIssuance(ctx, issuanceReq, profile)
@@ -464,4 +472,22 @@ func (c *Controller) ExchangeAuthorizationCodeRequest(ctx echo.Context) error {
 	}
 
 	return util.WriteOutput(ctx)(c.oidc4vcService.ExchangeAuthorizationCode(ctx.Request().Context(), body.OpState))
+}
+
+// RequestTransactionStateRequest Exchanges authorization code.
+// POST /issuer/interactions/{txId}.
+func (c *Controller) RequestTransactionStateRequest(ctx echo.Context, txId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+// PostIssuerInteractionsPreAuthorize Validate pre-authorize code.
+// POST /issuer/interactions/pre-authorize.
+func (c *Controller) PostIssuerInteractionsPreAuthorize(ctx echo.Context) error {
+	//var body PreAuthorizeRequest
+	//
+	//if err := util.ReadBody(ctx, &body); err != nil {
+	//	return err
+	//}
+	panic("any")
 }
