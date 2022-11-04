@@ -10,13 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/oauth2"
 
+	"github.com/trustbloc/vcs/pkg/oauth2client"
 	"github.com/trustbloc/vcs/pkg/service/oidc4vc"
 )
 
 func TestExchangeCode(t *testing.T) {
 	store := NewMockTransactionStore(gomock.NewController(t))
 	factory := NewMockOAuth2ClientFactory(gomock.NewController(t))
-	oauth2Client := NewMockOAuth2Client(gomock.NewController(t))
+	oauth2Client := oauth2client.NewMockOAuth2Client(gomock.NewController(t))
 
 	srv, err := oidc4vc.NewService(&oidc4vc.Config{TransactionStore: store, OAuth2ClientFactory: factory})
 	assert.NoError(t, err)
@@ -74,7 +75,7 @@ func TestExchangeCodeErrFindTx(t *testing.T) {
 func TestExchangeCodeIssuerError(t *testing.T) {
 	store := NewMockTransactionStore(gomock.NewController(t))
 	factory := NewMockOAuth2ClientFactory(gomock.NewController(t))
-	oauth2Client := NewMockOAuth2Client(gomock.NewController(t))
+	oauth2Client := oauth2client.NewMockOAuth2Client(gomock.NewController(t))
 
 	srv, err := oidc4vc.NewService(&oidc4vc.Config{TransactionStore: store, OAuth2ClientFactory: factory})
 	assert.NoError(t, err)
@@ -99,7 +100,7 @@ func TestExchangeCodeIssuerError(t *testing.T) {
 func TestExchangeCodeStoreUpdateErr(t *testing.T) {
 	store := NewMockTransactionStore(gomock.NewController(t))
 	factory := NewMockOAuth2ClientFactory(gomock.NewController(t))
-	oauth2Client := NewMockOAuth2Client(gomock.NewController(t))
+	oauth2Client := oauth2client.NewMockOAuth2Client(gomock.NewController(t))
 
 	srv, err := oidc4vc.NewService(&oidc4vc.Config{TransactionStore: store, OAuth2ClientFactory: factory})
 	assert.NoError(t, err)

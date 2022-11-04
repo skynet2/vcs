@@ -465,3 +465,8 @@ func (c *Controller) ExchangeAuthorizationCodeRequest(ctx echo.Context) error {
 
 	return util.WriteOutput(ctx)(c.oidc4vcService.ExchangeAuthorizationCode(ctx.Request().Context(), body.OpState))
 }
+
+func (c *Controller) ValidatePreAuthorizedCodeRequest(ctx echo.Context) error {
+	//TODO implement me
+	panic("implement me")
+}

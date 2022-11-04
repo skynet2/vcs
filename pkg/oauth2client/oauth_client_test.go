@@ -4,9 +4,9 @@ Copyright Avast Software. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-//go:generate mockgen -destination oauth_client_test_mocks_test.go -self_package mocks -package oidc4vc_test -source=oauth_client_test.go -mock_names httpRoundTripper=MockHttpRoundTripper
+//go:generate mockgen -destination oauth_client_test_mocks_test.go -self_package mocks -package oauth2client_test -source=oauth_client_test.go -mock_names httpRoundTripper=MockHttpRoundTripper
 
-package oidc4vc_test
+package oauth2client_test
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/oauth2"
 
-	"github.com/trustbloc/vcs/pkg/service/oidc4vc"
+	"github.com/trustbloc/vcs/pkg/oauth2client"
 )
 
 // nolint
@@ -30,7 +30,7 @@ type httpRoundTripper interface {
 
 func TestOAuth2ClientSuccess(t *testing.T) {
 	authCode := uuid.NewString()
-	factory := oidc4vc.NewOAuth2ClientFactory()
+	factory := oauth2client.NewOAuth2ClientFactory()
 
 	client := factory.GetClient(oauth2.Config{
 		ClientID:     "213125412",
@@ -83,7 +83,7 @@ func TestOAuth2ClientIssuerError(t *testing.T) {
 		}, nil
 	}).AnyTimes()
 
-	factory := oidc4vc.NewOAuth2ClientFactory()
+	factory := oauth2client.NewOAuth2ClientFactory()
 
 	client := factory.GetClient(oauth2.Config{
 		ClientID:     "213125412",

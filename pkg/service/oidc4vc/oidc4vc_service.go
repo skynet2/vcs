@@ -16,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/trustbloc/vcs/internal/pkg/log"
+	"github.com/trustbloc/vcs/pkg/oauth2client"
 )
 
 const (
@@ -45,7 +46,7 @@ type transactionStore interface {
 }
 
 type oAuth2ClientFactory interface {
-	GetClient(config oauth2.Config) OAuth2Client
+	GetClient(config oauth2.Config) oauth2client.OAuth2Client
 }
 
 type wellKnownService interface {
