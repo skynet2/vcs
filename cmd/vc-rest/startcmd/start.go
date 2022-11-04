@@ -30,6 +30,7 @@ import (
 	"github.com/trustbloc/vcs/internal/pkg/log"
 	"github.com/trustbloc/vcs/pkg/doc/vc/crypto"
 	"github.com/trustbloc/vcs/pkg/kms"
+	"github.com/trustbloc/vcs/pkg/oauth2client"
 	metricsProvider "github.com/trustbloc/vcs/pkg/observability/metrics"
 	noopMetricsProvider "github.com/trustbloc/vcs/pkg/observability/metrics/noop"
 	promMetricsProvider "github.com/trustbloc/vcs/pkg/observability/metrics/prometheus"
@@ -247,7 +248,7 @@ func buildEchoHandler(conf *Configuration, cmd *cobra.Command) (*echo.Echo, erro
 		TransactionStore:    oidc4vcStore,
 		IssuerVCSPublicHost: conf.StartupParameters.hostURL,
 		WellKnownService:    wellknown.NewService(httpClient),
-		OAuth2ClientFactory: oidc4vc.NewOAuth2ClientFactory(),
+		OAuth2ClientFactory: oauth2client.NewOAuth2ClientFactory(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate new oidc4 vc service: %w", err)
