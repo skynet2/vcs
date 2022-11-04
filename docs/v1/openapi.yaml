@@ -552,31 +552,30 @@ paths:
         - oidc4vc
     parameters: []
   /oidc/pre-authorized-code:
-    get:
+    post:
       summary: OIDC Pre-Authorized code flow handler
       tags:
         - oidc4vc
       operationId: oidc-pre-authorized-code
       description: Endpoint for handling Pre-Authorized code flow
-      parameters:
-        - schema:
-            type: string
-          name: grant_type
-          in: query
-          required: true
-          description: must be equal urn:ietf:params:oauth:grant-type:pre-authorized_code
-        - schema:
-            type: string
-          name: pre-authorized_code
-          in: query
-          required: true
-          description: pre-authorized code
-        - schema:
-            type: string
-          name: user_pin
-          in: query
-          required: false
-          description: user_pin
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  description: must be equal urn:ietf:params:oauth:grant-type:pre-authorized_code
+                pre-authorized_code:
+                  type: string
+                  description: pre-authorized_code
+                user_pin:
+                  type: string
+                  description: user_pin
+              required:
+                - grant_type
+                - authorized_code
       responses:
         '200':
           description: OK

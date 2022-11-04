@@ -80,18 +80,6 @@ type OidcAuthorizeParams struct {
 	OpState string `form:"op_state" json:"op_state"`
 }
 
-// OidcPreAuthorizedCodeParams defines parameters for OidcPreAuthorizedCode.
-type OidcPreAuthorizedCodeParams struct {
-	// must be equal urn:ietf:params:oauth:grant-type:pre-authorized_code
-	GrantType string `form:"grant_type" json:"grant_type"`
-
-	// pre-authorized code
-	PreAuthorizedCode string `form:"pre-authorized_code" json:"pre-authorized_code"`
-
-	// user_pin
-	UserPin *string `form:"user_pin,omitempty" json:"user_pin,omitempty"`
-}
-
 // OidcRedirectParams defines parameters for OidcRedirect.
 type OidcRedirectParams struct {
 	// auth code for issuer provider
@@ -110,8 +98,8 @@ type ServerInterface interface {
 	// (POST /oidc/par)
 	OidcPushedAuthorizationRequest(ctx echo.Context) error
 	// OIDC Pre-Authorized code flow handler
-	// (GET /oidc/pre-authorized-code)
-	OidcPreAuthorizedCode(ctx echo.Context, params OidcPreAuthorizedCodeParams) error
+	// (POST /oidc/pre-authorized-code)
+	OidcPreAuthorizedCode(ctx echo.Context) error
 	// OIDC Redirect
 	// (GET /oidc/redirect)
 	OidcRedirect(ctx echo.Context, params OidcRedirectParams) error
@@ -226,31 +214,8 @@ func (w *ServerInterfaceWrapper) OidcPushedAuthorizationRequest(ctx echo.Context
 func (w *ServerInterfaceWrapper) OidcPreAuthorizedCode(ctx echo.Context) error {
 	var err error
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params OidcPreAuthorizedCodeParams
-	// ------------- Required query parameter "grant_type" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "grant_type", ctx.QueryParams(), &params.GrantType)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter grant_type: %s", err))
-	}
-
-	// ------------- Required query parameter "pre-authorized_code" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "pre-authorized_code", ctx.QueryParams(), &params.PreAuthorizedCode)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter pre-authorized_code: %s", err))
-	}
-
-	// ------------- Optional query parameter "user_pin" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "user_pin", ctx.QueryParams(), &params.UserPin)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter user_pin: %s", err))
-	}
-
 	// Invoke the callback with all the unmarshalled arguments
-	err = w.Handler.OidcPreAuthorizedCode(ctx, params)
+	err = w.Handler.OidcPreAuthorizedCode(ctx)
 	return err
 }
 
@@ -318,7 +283,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.GET(baseURL+"/oidc/authorize", wrapper.OidcAuthorize)
 	router.POST(baseURL+"/oidc/par", wrapper.OidcPushedAuthorizationRequest)
-	router.GET(baseURL+"/oidc/pre-authorized-code", wrapper.OidcPreAuthorizedCode)
+	router.POST(baseURL+"/oidc/pre-authorized-code", wrapper.OidcPreAuthorizedCode)
 	router.GET(baseURL+"/oidc/redirect", wrapper.OidcRedirect)
 	router.POST(baseURL+"/oidc/token", wrapper.OidcToken)
 

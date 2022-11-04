@@ -23,7 +23,7 @@ func (c *Client) GeneratePKCE() (verifier string, challenge string, method strin
 	verifier = c.encode(b)
 
 	h := sha256.New()
-	h.Write(b)
+	h.Write([]byte(verifier))
 	challenge = c.encode(h.Sum(nil))
 
 	return verifier, challenge, defaultMethod, nil
