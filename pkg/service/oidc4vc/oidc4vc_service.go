@@ -10,6 +10,7 @@ package oidc4vc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -65,7 +66,7 @@ type Config struct {
 	WellKnownService    wellKnownService
 	IssuerVCSPublicHost string
 	OAuth2Client        oAuth2Client
-	DefaultHttpClient   *http.Client
+	DefaultHTTPClient   *http.Client
 }
 
 // Service implements VCS credential interaction API for OIDC4VC issuance.
@@ -74,7 +75,7 @@ type Service struct {
 	wellKnownService    wellKnownService
 	issuerVCSPublicHost string
 	oAuth2Client        oAuth2Client
-	defaultHttpClient   *http.Client
+	defaultHTTPClient   *http.Client
 }
 
 // NewService returns a new Service instance.
@@ -84,7 +85,7 @@ func NewService(config *Config) (*Service, error) {
 		wellKnownService:    config.WellKnownService,
 		issuerVCSPublicHost: config.IssuerVCSPublicHost,
 		oAuth2Client:        config.OAuth2Client,
-		defaultHttpClient:   config.DefaultHttpClient,
+		defaultHTTPClient:   config.DefaultHTTPClient,
 	}, nil
 }
 
@@ -179,4 +180,18 @@ func (s *Service) updateAuthorizationDetails(ctx context.Context, ad *Authorizat
 	}
 
 	return nil
+}
+
+func (s *Service) ValidatePreAuthorizedCodeRequest(ctx context.Context, preAuthorizedCode string, pin string) (*Transaction, error) {
+	tx, err := s.store.FindByOpState(ctx, preAuthorizedCode)
+	if err != nil {
+		return nil, fmt.Errorf("find tx by op state: %w", err)
+	}
+
+	if tx.PreAuthCode != preAuthorizedCode || (tx.UserPinRequired && len(pin) == 0) {
+		// todo in future add proper pin validation
+		return nil, errors.New("invalid auth credentials")
+	}
+
+	return tx, nil
 }

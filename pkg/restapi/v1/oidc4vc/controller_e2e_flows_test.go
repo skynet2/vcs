@@ -210,7 +210,7 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 		IssuerVCSPublicHost:     srv.URL,
 		OAuth2Client:            oauth2client.NewOAuth2Client(),
 		PreAuthorizeClient:      preAuthClient,
-		DefaultHttpClient:       http.DefaultClient,
+		DefaultHTTPClient:       http.DefaultClient,
 	})
 
 	oidc4vc.RegisterHandlers(e, controller)
@@ -219,12 +219,14 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 	pin := "493536"
 	opState := "QIn85XAEHwlPyCVRhTww"
 
-	interaction.EXPECT().ValidatePreAuthorizedCodeRequest(gomock.Any(), issuer.ValidatePreAuthorizedCodeRequestJSONRequestBody{
-		PreAuthorizedCode: code,
-		UserPin:           lo.ToPtr(pin),
-	}).Return(&http.Response{
+	interaction.EXPECT().ValidatePreAuthorizedCodeRequest(gomock.Any(),
+		issuer.ValidatePreAuthorizedCodeRequestJSONRequestBody{
+			PreAuthorizedCode: code,
+			UserPin:           lo.ToPtr(pin),
+		},
+	).Return(&http.Response{
 		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["openid", "profile"], "op_state" : "QIn85XAEHwlPyCVRhTww"}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["openid", "profile"], "op_state" : "QIn85XAEHwlPyCVRhTww"}`)), //nolint
 	}, nil)
 
 	preAuthClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {

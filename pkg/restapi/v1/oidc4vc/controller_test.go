@@ -709,7 +709,7 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 						Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["a","b"], "op_state" : "opp123"}`)),
 					}, nil)
 				oauthClient.EXPECT().GeneratePKCE().Return("verifier", "challenge", "S256", nil)
-				finalUrl := "https://127.0.0.1/authorize"
+				finalURL := "https://127.0.0.1/authorize"
 
 				cfg := oauth2.Config{
 					ClientID:     "pre-auth-client",
@@ -723,7 +723,7 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 					},
 				}
 
-				oauthClient.EXPECT().AuthCodeURL(gomock.Any(), cfg, "opp123", gomock.Any()).Return(finalUrl)
+				oauthClient.EXPECT().AuthCodeURL(gomock.Any(), cfg, "opp123", gomock.Any()).Return(finalURL)
 
 				preAuthorizeClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 					assert.Equal(t, "/authorize", req.URL.Path)

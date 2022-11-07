@@ -223,7 +223,7 @@ paths:
               $ref: '#/components/schemas/PrepareClaimDataAuthorizationRequest'
       tags:
         - issuer
-  /issuer/interactions/valitedate-pre-authorized-code:
+  /issuer/interactions/validate-pre-authorized-code:
     post:
       summary: Validates pre-authorized code and user pin
       responses:

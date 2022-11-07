@@ -739,7 +739,7 @@ func NewValidatePreAuthorizedCodeRequestRequestWithBody(server string, contentTy
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/issuer/interactions/valitedate-pre-authorized-code")
+	operationPath := fmt.Sprintf("/issuer/interactions/validate-pre-authorized-code")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1609,7 +1609,7 @@ type ServerInterface interface {
 	// (POST /issuer/interactions/store-authorization-code)
 	StoreAuthorizationCodeRequest(ctx echo.Context) error
 	// Validates pre-authorized code and user pin
-	// (POST /issuer/interactions/valitedate-pre-authorized-code)
+	// (POST /issuer/interactions/validate-pre-authorized-code)
 	ValidatePreAuthorizedCodeRequest(ctx echo.Context) error
 	// Issue credential
 	// (POST /issuer/profiles/{profileID}/credentials/issue)
@@ -1779,7 +1779,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/issuer/interactions/prepare-claim-data-authz-request", wrapper.PrepareAuthorizationRequest)
 	router.POST(baseURL+"/issuer/interactions/push-authorization-request", wrapper.PushAuthorizationDetails)
 	router.POST(baseURL+"/issuer/interactions/store-authorization-code", wrapper.StoreAuthorizationCodeRequest)
-	router.POST(baseURL+"/issuer/interactions/valitedate-pre-authorized-code", wrapper.ValidatePreAuthorizedCodeRequest)
+	router.POST(baseURL+"/issuer/interactions/validate-pre-authorized-code", wrapper.ValidatePreAuthorizedCodeRequest)
 	router.POST(baseURL+"/issuer/profiles/:profileID/credentials/issue", wrapper.PostIssueCredentials)
 	router.POST(baseURL+"/issuer/profiles/:profileID/credentials/status", wrapper.PostCredentialsStatus)
 	router.GET(baseURL+"/issuer/profiles/:profileID/credentials/status/:statusID", wrapper.GetCredentialsStatus)

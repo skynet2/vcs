@@ -28,7 +28,7 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, opState string)
 			AuthStyle: oauth2.AuthStyleAutoDetect,
 		},
 		Scopes: tx.Scope,
-	}, tx.IssuerAuthCode, s.defaultHttpClient)
+	}, tx.IssuerAuthCode, s.defaultHTTPClient)
 
 	if err != nil {
 		return "", err

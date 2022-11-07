@@ -27,7 +27,6 @@ import (
 	"github.com/trustbloc/vcs/pkg/restapi/resterr"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/common"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/issuer"
-	apiutil "github.com/trustbloc/vcs/pkg/restapi/v1/util"
 	"github.com/trustbloc/vcs/pkg/service/oidc4vc"
 	"github.com/trustbloc/vcs/pkg/storage/mongodb/oidc4vcstatestore"
 )
@@ -56,7 +55,7 @@ type StateStore interface {
 	) (*oidc4vcstatestore.AuthorizeState, error)
 }
 
-type HttpClient interface {
+type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
@@ -85,8 +84,8 @@ type Config struct {
 	IssuerInteractionClient IssuerInteractionClient
 	IssuerVCSPublicHost     string
 	OAuth2Client            OAuth2Client
-	PreAuthorizeClient      HttpClient
-	DefaultHttpClient       *http.Client
+	PreAuthorizeClient      HTTPClient
+	DefaultHTTPClient       *http.Client
 }
 
 // Controller for OIDC4VC issuance API.
@@ -96,8 +95,8 @@ type Controller struct {
 	issuerInteractionClient IssuerInteractionClient
 	issuerVCSPublicHost     string
 	oAuth2Client            OAuth2Client
-	preAuthorizeClient      HttpClient
-	defaultHttpClient       *http.Client
+	preAuthorizeClient      HTTPClient
+	defaultHTTPClient       *http.Client
 }
 
 // NewController creates a new Controller instance.
@@ -109,7 +108,7 @@ func NewController(config *Config) *Controller {
 		issuerVCSPublicHost:     config.IssuerVCSPublicHost,
 		oAuth2Client:            config.OAuth2Client,
 		preAuthorizeClient:      config.PreAuthorizeClient,
-		defaultHttpClient:       config.DefaultHttpClient,
+		defaultHTTPClient:       config.DefaultHTTPClient,
 	}
 }
 
@@ -274,7 +273,7 @@ func (c *Controller) OidcRedirect(e echo.Context, params OidcRedirectParams) err
 
 	resp, err := c.stateStore.GetAuthorizeState(ctx, params.State)
 	if err != nil {
-		return apiutil.WriteOutput(e)(nil, err)
+		return apiUtil.WriteOutput(e)(nil, err)
 	}
 
 	storeResp, storeErr := c.issuerInteractionClient.StoreAuthorizationCodeRequest(ctx,
@@ -381,7 +380,7 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
-	authUrl := c.oAuth2Client.AuthCodeURL(ctx,
+	authURL := c.oAuth2Client.AuthCodeURL(ctx,
 		cfg,
 		validateResponse.OpState,
 		oauth2.SetAuthURLParam("authorization_details", preAuthorizedCodeGrantType),
@@ -390,7 +389,7 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 		oauth2.SetAuthURLParam("code_challenge", challenge),
 	)
 
-	httpReq, err := http.NewRequest("GET", authUrl, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", authURL, nil)
 	if err != nil {
 		return err
 	}
@@ -399,19 +398,20 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 	if err != nil {
 		return err
 	}
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		return fmt.Errorf("unexpected status code %v, expected %v", resp.StatusCode,
 			http.StatusSeeOther)
 	}
 
-	parsedUrl, err := url.Parse(resp.Header.Get("location"))
+	parsedURL, err := url.Parse(resp.Header.Get("location"))
 	if err != nil {
 		return err
 	}
 
 	token, err := c.oAuth2Client.ExchangeWithCustomClient(ctx, cfg,
-		parsedUrl.Query().Get("code"),
-		c.defaultHttpClient,
+		parsedURL.Query().Get("code"),
+		c.defaultHTTPClient,
 		oauth2.SetAuthURLParam("code_verifier", verifier),
 	)
 	if err != nil {
