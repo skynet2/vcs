@@ -201,7 +201,6 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 	)
 
 	interaction := NewMockIssuerInteractionClient(gomock.NewController(t))
-	factory := NewMockOA(gomock.NewController(t))
 	preAuthClient := NewMockHttpClient(gomock.NewController(t))
 
 	controller := oidc4vc.NewController(&oidc4vc.Config{
@@ -209,7 +208,7 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 		StateStore:              &memoryStateStore{kv: make(map[string]*oidc4vcstatestore.AuthorizeState)},
 		IssuerInteractionClient: interaction,
 		IssuerVCSPublicHost:     srv.URL,
-		OAuth2Client:            factory,
+		OAuth2Client:            oauth2client.NewOAuth2Client(),
 		PreAuthorizeClient:      preAuthClient,
 		DefaultHttpClient:       http.DefaultClient,
 	})
@@ -228,21 +227,6 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["openid", "profile"], "op_state" : "QIn85XAEHwlPyCVRhTww"}`)),
 	}, nil)
 
-	cfg := oauth2.Config{
-		ClientID:     "pre-auth-client",
-		ClientSecret: "foobar",
-		RedirectURL:  srv.URL + "/oidc/token",
-		Scopes:       []string{"openid", "profile"},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:   srv.URL + "/oidc/authorize",
-			TokenURL:  srv.URL + "/oidc/token",
-			AuthStyle: oauth2.AuthStyleInParams,
-		},
-	}
-
-	factory.EXPECT().GetClient(cfg).Return(&oauth2client.Client{
-		Config: &cfg,
-	})
 	preAuthClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 		query := req.URL.Query()
 

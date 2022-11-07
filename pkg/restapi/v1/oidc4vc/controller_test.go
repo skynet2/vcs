@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
 	"github.com/trustbloc/vcs/pkg/restapi/v1/issuer"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/oidc4vc"
@@ -683,7 +685,8 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 	var (
 		mockOAuthProvider     = NewMockOAuth2Provider(gomock.NewController(t))
 		mockInteractionClient = NewMockIssuerInteractionClient(gomock.NewController(t))
-		oauthClietnFactory    = NewMockOAuth2ClientFactory(gomock.NewController(t))
+		oauthClient           = NewMockOAuth2Client(gomock.NewController(t))
+		preAuthorizeClient    = NewMockHttpClient(gomock.NewController(t))
 	)
 
 	tests := []struct {
@@ -692,6 +695,60 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 		setup func()
 		check func(t *testing.T, rec *httptest.ResponseRecorder, err error)
 	}{
+		{
+			name: "success",
+			body: strings.NewReader(url.Values{
+				"grant_type":          {"urn:ietf:params:oauth:grant-type:pre-authorized_code"},
+				"pre-authorized_code": {"123456"},
+				"user_pin":            {"5678"},
+			}.Encode()),
+			setup: func() {
+				mockInteractionClient.EXPECT().ValidatePreAuthorizedCodeRequest(gomock.Any(), gomock.Any()).
+					Return(&http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["a","b"], "op_state" : "opp123"}`)),
+					}, nil)
+				oauthClient.EXPECT().GeneratePKCE().Return("verifier", "challenge", "S256", nil)
+				finalUrl := "https://127.0.0.1/authorize"
+
+				cfg := oauth2.Config{
+					ClientID:     "pre-auth-client",
+					ClientSecret: "foobar",
+					RedirectURL:  "/oidc/token",
+					Scopes:       []string{"a", "b"},
+					Endpoint: oauth2.Endpoint{
+						AuthURL:   "/oidc/authorize",
+						TokenURL:  "/oidc/token",
+						AuthStyle: oauth2.AuthStyleInParams,
+					},
+				}
+
+				oauthClient.EXPECT().AuthCodeURL(gomock.Any(), cfg, "opp123", gomock.Any()).Return(finalUrl)
+
+				preAuthorizeClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+					assert.Equal(t, "/authorize", req.URL.Path)
+					return &http.Response{
+						StatusCode: http.StatusSeeOther,
+						Header: map[string][]string{
+							"Location": {"https://localhost/redirect?code=my-secure-code"},
+						},
+					}, nil
+				})
+
+				oauthClient.EXPECT().ExchangeWithCustomClient(gomock.Any(), cfg, "my-secure-code",
+					gomock.Any(), gomock.Any()).Return(&oauth2.Token{
+					AccessToken: "123456",
+					Expiry:      time.Now().UTC().Add(10 * time.Minute),
+				}, nil)
+			},
+			check: func(t *testing.T, rec *httptest.ResponseRecorder, err error) {
+				assert.NoError(t, err)
+				var resp oidc4vc.AccessTokenResponse
+				assert.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+				assert.Equal(t, "123456", resp.AccessToken)
+				assert.NotEmpty(t, *resp.ExpiresIn)
+			},
+		},
 		{
 			name:  "invalid grant type",
 			setup: func() {},
@@ -748,10 +805,11 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 					Return(&http.Response{
 						StatusCode: http.StatusOK,
 						Body:       io.NopCloser(strings.NewReader(`{"scopes" : ["a","b"]}`)),
-					})
-
-				client := NewMockOAuth2ClientFactory()
-				oauthClietnFactory.EXPECT().GetClient(gomock.Any()).Return()
+					}, nil)
+				oauthClient.EXPECT().GeneratePKCE().Return("", "", "", errors.New("unexpected pkce error"))
+			},
+			check: func(t *testing.T, rec *httptest.ResponseRecorder, err error) {
+				assert.ErrorContains(t, err, "unexpected pkce error")
 			},
 		},
 	}
@@ -763,6 +821,8 @@ func TestController_OidcPreAuthorize(t *testing.T) {
 			controller := oidc4vc.NewController(&oidc4vc.Config{
 				OAuth2Provider:          mockOAuthProvider,
 				IssuerInteractionClient: mockInteractionClient,
+				OAuth2Client:            oauthClient,
+				PreAuthorizeClient:      preAuthorizeClient,
 			})
 
 			req := httptest.NewRequest(http.MethodPost, "/", tt.body)
