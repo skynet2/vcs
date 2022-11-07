@@ -248,7 +248,7 @@ func buildEchoHandler(conf *Configuration, cmd *cobra.Command) (*echo.Echo, erro
 		TransactionStore:    oidc4vcStore,
 		IssuerVCSPublicHost: conf.StartupParameters.hostURL,
 		WellKnownService:    wellknown.NewService(httpClient),
-		OAuth2ClientFactory: oauth2client.NewOAuth2ClientFactory(),
+		OAuth2ClientFactory: oauth2client.NewOAuth2Client(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate new oidc4 vc service: %w", err)

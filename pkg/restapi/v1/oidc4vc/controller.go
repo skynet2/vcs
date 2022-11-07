@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 //go:generate oapi-codegen --config=openapi.cfg.yaml ../../../../docs/v1/openapi.yaml
-//go:generate mockgen -destination controller_mocks_test.go -self_package mocks -package oidc4vc_test . StateStore,OAuth2Provider,IssuerInteractionClient,OAuth2ClientFactory,HttpClient
+//go:generate mockgen -destination controller_mocks_test.go -self_package mocks -package oidc4vc_test . StateStore,OAuth2Provider,IssuerInteractionClient,HttpClient,OAuth2Client
 
 package oidc4vc
 
@@ -24,7 +24,6 @@ import (
 
 	apiUtil "github.com/trustbloc/vcs/pkg/restapi/v1/util"
 
-	"github.com/trustbloc/vcs/pkg/oauth2client"
 	"github.com/trustbloc/vcs/pkg/restapi/resterr"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/common"
 	"github.com/trustbloc/vcs/pkg/restapi/v1/issuer"
@@ -57,12 +56,20 @@ type StateStore interface {
 	) (*oidc4vcstatestore.AuthorizeState, error)
 }
 
-type OAuth2ClientFactory interface {
-	GetClient(config oauth2.Config) oauth2client.OAuth2Client
-}
-
 type HttpClient interface {
 	Do(req *http.Request) (*http.Response, error)
+}
+
+type OAuth2Client interface {
+	GeneratePKCE() (verifier string, challenge string, method string, err error)
+	AuthCodeURL(_ context.Context, cfg oauth2.Config, state string, opts ...oauth2.AuthCodeOption) string
+	ExchangeWithCustomClient(
+		ctx context.Context,
+		cfg oauth2.Config,
+		code string,
+		client *http.Client,
+		opts ...oauth2.AuthCodeOption,
+	) (*oauth2.Token, error)
 }
 
 // OAuth2Provider provides functionality for OAuth2 handlers.
@@ -77,8 +84,9 @@ type Config struct {
 	StateStore              StateStore
 	IssuerInteractionClient IssuerInteractionClient
 	IssuerVCSPublicHost     string
-	OAuth2ClientFactory     OAuth2ClientFactory
+	OAuth2Client            OAuth2Client
 	PreAuthorizeClient      HttpClient
+	DefaultHttpClient       *http.Client
 }
 
 // Controller for OIDC4VC issuance API.
@@ -87,8 +95,9 @@ type Controller struct {
 	stateStore              StateStore
 	issuerInteractionClient IssuerInteractionClient
 	issuerVCSPublicHost     string
-	oAuth2ClientFactory     OAuth2ClientFactory
+	oAuth2Client            OAuth2Client
 	preAuthorizeClient      HttpClient
+	defaultHttpClient       *http.Client
 }
 
 // NewController creates a new Controller instance.
@@ -98,8 +107,9 @@ func NewController(config *Config) *Controller {
 		stateStore:              config.StateStore,
 		issuerInteractionClient: config.IssuerInteractionClient,
 		issuerVCSPublicHost:     config.IssuerVCSPublicHost,
-		oAuth2ClientFactory:     config.OAuth2ClientFactory,
+		oAuth2Client:            config.OAuth2Client,
 		preAuthorizeClient:      config.PreAuthorizeClient,
+		defaultHttpClient:       config.DefaultHttpClient,
 	}
 }
 
@@ -355,7 +365,12 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 	}
 	_ = resp.Body.Close()
 
-	oauthClient := c.oAuth2ClientFactory.GetClient(oauth2.Config{
+	verifier, challenge, method, err := c.oAuth2Client.GeneratePKCE()
+	if err != nil {
+		return err
+	}
+
+	cfg := oauth2.Config{
 		ClientID:     "pre-auth-client",
 		ClientSecret: "foobar",
 		RedirectURL:  c.issuerVCSPublicHost + tokenEndpoint,
@@ -365,14 +380,10 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 			TokenURL:  c.issuerVCSPublicHost + tokenEndpoint,
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
-	})
-
-	verifier, challenge, method, err := oauthClient.GeneratePKCE()
-	if err != nil {
-		return err
 	}
-
-	authUrl := oauthClient.AuthCodeURL(validateResponse.OpState,
+	authUrl := c.oAuth2Client.AuthCodeURL(ctx,
+		cfg,
+		validateResponse.OpState,
 		oauth2.SetAuthURLParam("authorization_details", preAuthorizedCodeGrantType),
 		oauth2.SetAuthURLParam("op_state", validateResponse.OpState),
 		oauth2.SetAuthURLParam("code_challenge_method", method),
@@ -398,7 +409,9 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 		return err
 	}
 
-	token, err := oauthClient.Exchange(ctx, parsedUrl.Query().Get("code"),
+	token, err := c.oAuth2Client.ExchangeWithCustomClient(ctx, cfg,
+		parsedUrl.Query().Get("code"),
+		c.defaultHttpClient,
 		oauth2.SetAuthURLParam("code_verifier", verifier),
 	)
 	if err != nil {

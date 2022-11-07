@@ -4,19 +4,19 @@ Copyright SecureKey Technologies Inc. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-//go:generate mockgen -destination oidc4vc_service_mocks_test.go -self_package mocks -package oidc4vc_test -source=oidc4vc_service.go -mock_names transactionStore=MockTransactionStore,wellKnownService=MockWellKnownService,oAuth2Client=MockOAuth2Client,oAuth2ClientFactory=MockOAuth2ClientFactory
+//go:generate mockgen -destination oidc4vc_service_mocks_test.go -self_package mocks -package oidc4vc_test -source=oidc4vc_service.go -mock_names transactionStore=MockTransactionStore,wellKnownService=MockWellKnownService,oAuth2Client=MockOAuth2Client
 
 package oidc4vc
 
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"golang.org/x/oauth2"
 
 	"github.com/trustbloc/vcs/internal/pkg/log"
-	"github.com/trustbloc/vcs/pkg/oauth2client"
 )
 
 const (
@@ -45,8 +45,14 @@ type transactionStore interface {
 	) error
 }
 
-type oAuth2ClientFactory interface {
-	GetClient(config oauth2.Config) oauth2client.OAuth2Client
+type oAuth2Client interface {
+	ExchangeWithCustomClient(
+		ctx context.Context,
+		cfg oauth2.Config,
+		code string,
+		client *http.Client,
+		opts ...oauth2.AuthCodeOption,
+	) (*oauth2.Token, error)
 }
 
 type wellKnownService interface {
@@ -58,7 +64,8 @@ type Config struct {
 	TransactionStore    transactionStore
 	WellKnownService    wellKnownService
 	IssuerVCSPublicHost string
-	OAuth2ClientFactory oAuth2ClientFactory
+	OAuth2Client        oAuth2Client
+	DefaultHttpClient   *http.Client
 }
 
 // Service implements VCS credential interaction API for OIDC4VC issuance.
@@ -66,7 +73,8 @@ type Service struct {
 	store               transactionStore
 	wellKnownService    wellKnownService
 	issuerVCSPublicHost string
-	oAuth2ClientFactory oAuth2ClientFactory
+	oAuth2Client        oAuth2Client
+	defaultHttpClient   *http.Client
 }
 
 // NewService returns a new Service instance.
@@ -75,7 +83,8 @@ func NewService(config *Config) (*Service, error) {
 		store:               config.TransactionStore,
 		wellKnownService:    config.WellKnownService,
 		issuerVCSPublicHost: config.IssuerVCSPublicHost,
-		oAuth2ClientFactory: config.OAuth2ClientFactory,
+		oAuth2Client:        config.OAuth2Client,
+		defaultHttpClient:   config.DefaultHttpClient,
 	}, nil
 }
 

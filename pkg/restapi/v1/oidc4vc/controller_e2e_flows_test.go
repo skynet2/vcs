@@ -201,7 +201,7 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 	)
 
 	interaction := NewMockIssuerInteractionClient(gomock.NewController(t))
-	factory := NewMockOAuth2ClientFactory(gomock.NewController(t))
+	factory := NewMockOA(gomock.NewController(t))
 	preAuthClient := NewMockHttpClient(gomock.NewController(t))
 
 	controller := oidc4vc.NewController(&oidc4vc.Config{
@@ -209,8 +209,9 @@ func TestPreAuthorizeCodeGrantFlow(t *testing.T) {
 		StateStore:              &memoryStateStore{kv: make(map[string]*oidc4vcstatestore.AuthorizeState)},
 		IssuerInteractionClient: interaction,
 		IssuerVCSPublicHost:     srv.URL,
-		OAuth2ClientFactory:     factory,
+		OAuth2Client:            factory,
 		PreAuthorizeClient:      preAuthClient,
+		DefaultHttpClient:       http.DefaultClient,
 	})
 
 	oidc4vc.RegisterHandlers(e, controller)

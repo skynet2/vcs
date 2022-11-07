@@ -10,29 +10,42 @@ package oauth2client
 
 import (
 	"context"
+	"net/http"
 
 	"golang.org/x/oauth2"
 )
 
-type Factory struct {
-}
-
 type Client struct {
-	*oauth2.Config
 }
 
-type OAuth2Client interface {
-	Exchange(ctx context.Context, code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error)
-	AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string
-	GeneratePKCE() (verifier string, challenge string, method string, err error)
+func NewOAuth2Client() *Client {
+	return &Client{}
 }
 
-func NewOAuth2ClientFactory() *Factory {
-	return &Factory{}
+func (c *Client) Exchange(
+	ctx context.Context,
+	cfg oauth2.Config,
+	code string,
+	opts ...oauth2.AuthCodeOption,
+) (*oauth2.Token, error) {
+	return (&cfg).Exchange(ctx, code, opts...)
 }
 
-func (o *Factory) GetClient(config oauth2.Config) OAuth2Client {
-	return &Client{
-		Config: &config,
-	}
+func (c *Client) ExchangeWithCustomClient(
+	ctx context.Context,
+	cfg oauth2.Config,
+	code string,
+	client *http.Client,
+	opts ...oauth2.AuthCodeOption,
+) (*oauth2.Token, error) {
+	return c.Exchange(
+		context.WithValue(ctx, oauth2.HTTPClient, client),
+		cfg,
+		code,
+		opts...,
+	)
+}
+
+func (c *Client) AuthCodeURL(_ context.Context, cfg oauth2.Config, state string, opts ...oauth2.AuthCodeOption) string {
+	return (&cfg).AuthCodeURL(state, opts...)
 }

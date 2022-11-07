@@ -20,6 +20,10 @@ func (c *Client) GeneratePKCE() (verifier string, challenge string, method strin
 		return "", "", "", err
 	}
 
+	return c.GeneratePKCEFromBytes(b)
+}
+
+func (c *Client) GeneratePKCEFromBytes(b []byte) (verifier string, challenge string, method string, err error) {
 	verifier = c.encode(b)
 
 	h := sha256.New()
