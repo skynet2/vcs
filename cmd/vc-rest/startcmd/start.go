@@ -241,7 +241,7 @@ func buildEchoHandler(conf *Configuration, cmd *cobra.Command) (*echo.Echo, erro
 
 	oidc4vcService, err := oidc4vc.NewService(&oidc4vc.Config{
 		TransactionStore:    oidc4vcStore,
-		IssuerVCSPublicHost: conf.StartupParameters.hostURL,
+		IssuerVCSPublicHost: conf.StartupParameters.hostURLExternal,
 		WellKnownService:    wellknown.NewService(httpClient),
 		OAuth2Client:        oauth2client.NewOAuth2Client(),
 		DefaultHTTPClient:   httpClient,

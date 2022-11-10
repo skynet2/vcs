@@ -370,10 +370,9 @@ func (c *Controller) OidcPreAuthorizedCode(e echo.Context) error {
 	}
 
 	cfg := oauth2.Config{
-		ClientID:     "pre-auth-client",
-		ClientSecret: "foobar",
-		RedirectURL:  c.issuerVCSPublicHost + tokenEndpoint,
-		Scopes:       validateResponse.Scopes,
+		ClientID:    "oidc4vc_client",
+		RedirectURL: c.issuerVCSPublicHost + tokenEndpoint,
+		Scopes:      validateResponse.Scopes,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   c.issuerVCSPublicHost + authorizeEndpoint,
 			TokenURL:  c.issuerVCSPublicHost + tokenEndpoint,
