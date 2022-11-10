@@ -53,7 +53,7 @@ license:
 vc-rest:
 	@echo "Building vc-rest"
 	@mkdir -p ./.build/bin
-	@cd ${VC_REST_PATH} && go build -o ../../.build/bin/vc-rest main.go
+	@cd ${VC_REST_PATH} && go build -gcflags "all=-N -l" -o ../../.build/bin/vc-rest main.go
 
 .PHONY: vc-rest-docker
 vc-rest-docker: generate

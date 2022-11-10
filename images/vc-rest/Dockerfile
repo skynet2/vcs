@@ -27,9 +27,9 @@ FROM alpine:${ALPINE_VER} as base
 LABEL org.opencontainers.image.source https://github.com/trustbloc/vcs
 
 COPY --from=vcs /go/src/github.com/trustbloc/vcs/.build/bin/vc-rest /usr/local/bin
-
+RUN apk add --no-cache --update delve --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/
 # set up nsswitch.conf for Go's "netgo" implementation
 # - https://github.com/golang/go/blob/go1.9.1/src/net/conf.go#L194-L275
 RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
-ENTRYPOINT ["vc-rest"]
+ENTRYPOINT ["dlv", "exec", "--listen=:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "/usr/local/bin/vc-rest", "--", "start"]
