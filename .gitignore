@@ -38,3 +38,9 @@ test/bdd/fixtures/spec/
 *_mocks_test.go
 gomocks_test.go
 cmd/vc-rest/.env
+
+pkg/restapi/handlers/preauthorize_mock_handler_test.go
+
+pkg/restapi/handlers/preauthorize_mock_test.go
+
+pkg/kms/mocks/kms_mocks.go

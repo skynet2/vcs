@@ -102,7 +102,7 @@ func (s *Service) RunOIDC4CIPreAuth(config *OIDC4CIConfig) error {
 		return fmt.Errorf("get credential: %w", err)
 	}
 	s.perfInfo.VcsCIFlowDuration += vcsDuration
-	s.perfInfo.GetCredential = time.Since(startTime)
+	s.perfInfo.GetCredential = vcsDuration
 
 	b, err := json.Marshal(vc)
 	if err != nil {

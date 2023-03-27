@@ -24,6 +24,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/piprate/json-gold/ld"
 	"github.com/samber/lo"
+	"github.com/trustbloc/logutil-go/pkg/log"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trustbloc/vcs/pkg/doc/vc"
@@ -585,6 +586,8 @@ func (c *Controller) ValidatePreAuthorizedCodeRequest(ctx echo.Context) error {
 	}, nil)
 }
 
+var logger = log.New("oidc4-ci")
+
 // PrepareCredential requests claim data and prepares VC for signing by issuer.
 // POST /issuer/interactions/prepare-credential.
 func (c *Controller) PrepareCredential(e echo.Context) error {
@@ -601,6 +604,7 @@ func (c *Controller) PrepareCredential(e echo.Context) error {
 
 	ctx := e.Request().Context()
 
+	st := time.Now()
 	result, err := c.oidc4ciService.PrepareCredential(
 		ctx,
 		&oidc4ci.PrepareCredential{
@@ -610,6 +614,7 @@ func (c *Controller) PrepareCredential(e echo.Context) error {
 			DID:              lo.FromPtr(body.Did),
 		},
 	)
+	logger.Debug(fmt.Sprintf("oidc4ci c.oidc4ciService.PrepareCredential %v", time.Since(st)))
 
 	if err != nil {
 		var custom *resterr.CustomError
@@ -625,13 +630,18 @@ func (c *Controller) PrepareCredential(e echo.Context) error {
 		return err
 	}
 
+	st = time.Now()
 	credentialParsed, err := c.parseCredential(
 		result.Credential, result.EnforceStrictValidation, profile.VCConfig.Format)
+	logger.Debug(fmt.Sprintf("oidc4ci c.parseCredential %v", time.Since(st)))
+
 	if err != nil {
 		return err
 	}
 
+	st = time.Now()
 	signedCredential, err := c.signCredential(ctx, credentialParsed, nil, profile)
+	logger.Debug(fmt.Sprintf("oidc4ci c.signCredential %v", time.Since(st)))
 	if err != nil {
 		return err
 	}
