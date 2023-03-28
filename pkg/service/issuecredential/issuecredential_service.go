@@ -11,8 +11,10 @@ package issuecredential
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
+	"github.com/trustbloc/logutil-go/pkg/log"
 
 	"github.com/trustbloc/vcs/pkg/doc/vc"
 	"github.com/trustbloc/vcs/pkg/doc/vc/crypto"
@@ -59,6 +61,8 @@ func New(config *Config) *Service {
 	}
 }
 
+var logger = log.New("issuer-credential-svc")
+
 func (s *Service) IssueCredential(
 	ctx context.Context,
 	credential *verifiable.Credential,
@@ -88,7 +92,9 @@ func (s *Service) IssueCredential(
 	vcutil.PrependCredentialPrefix(credential, defaultCredentialPrefix)
 
 	if !profile.VCConfig.Status.Disable {
+		st := time.Now()
 		statusListEntry, err = s.vcStatusManager.CreateStatusListEntry(ctx, profile.ID, credential.ID)
+		logger.Info(fmt.Sprintf("s.vcStatusManager.CreateStatusListEntry took %v", time.Since(st)))
 		if err != nil {
 			return nil, fmt.Errorf("failed to add credential status: %w", err)
 		}
@@ -104,7 +110,9 @@ func (s *Service) IssueCredential(
 	vcutil.UpdateIssuer(credential, profile.SigningDID.DID, profile.Name, true)
 
 	// sign the credential
+	st := time.Now()
 	signedVC, err := s.crypto.SignCredential(signer, credential, issuerSigningOpts...)
+	logger.Info(fmt.Sprintf("s.crypto.SignCredential took %v", time.Since(st)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign credential: %w", err)
 	}
