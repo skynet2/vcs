@@ -13,10 +13,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	vdrapi "github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdr"
 	"github.com/piprate/json-gold/ld"
+	"github.com/trustbloc/logutil-go/pkg/log"
 
 	"github.com/trustbloc/vcs/pkg/doc/vc"
 	"github.com/trustbloc/vcs/pkg/doc/vc/bitstring"
@@ -168,6 +168,8 @@ func (s *Service) ValidateCredentialProof(ctx context.Context, vcByte []byte, pr
 	return nil
 }
 
+var logger = log.New("verify-credential")
+
 func (s *Service) ValidateVCStatus(ctx context.Context, vcStatus *verifiable.TypedID, issuer string) error {
 	vcStatusProcessor, err := s.vcStatusProcessorGetter(vc.StatusType(vcStatus.Type))
 	if err != nil {
@@ -213,6 +215,9 @@ func (s *Service) ValidateVCStatus(ctx context.Context, vcStatus *verifiable.Typ
 	}
 
 	if bitSet {
+		v, _ := statusListVC.MarshalJSON()
+		logger.Debug(fmt.Sprintf("vcURL %v | cred %v", statusVCURL, string(v)))
+
 		return errors.New(revokedMsg)
 	}
 
