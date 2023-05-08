@@ -457,6 +457,9 @@ func buildEchoHandler(
 
 	var redisClient, redisClientNoTracing *redisclient.Client
 	if conf.StartupParameters.transientDataParams.storeType == redisStore {
+		logger.Warn(fmt.Sprintf("redis master: %v", conf.StartupParameters.redisParameters.masterName))
+		logger.Warn(fmt.Sprintf("redis addrs: %v", conf.StartupParameters.redisParameters.addrs))
+
 		defaultOpts := []redisclient.ClientOpt{
 			redisclient.WithMasterName(conf.StartupParameters.redisParameters.masterName),
 			redisclient.WithPassword(conf.StartupParameters.redisParameters.password)}
